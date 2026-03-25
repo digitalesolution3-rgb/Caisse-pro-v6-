@@ -1,4 +1,4 @@
-const CACHE_NAME = 'caisse-pro-v1';
+const CACHE_NAME = 'caisse-pro-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -12,7 +12,6 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@400;500;600;700;800;900&display=swap'
 ];
 
-// Installation du Service Worker
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -21,7 +20,6 @@ self.addEventListener('install', event => {
   );
 });
 
-// Activation et nettoyage des anciens caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -36,16 +34,14 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Stratégie de cache: Network First avec fallback
 self.addEventListener('fetch', event => {
-  // Ne pas intercepter les appels Firebase (préserver la synchronisation temps réel)
+  // Ne pas intercepter les appels Firebase (Firestore temps réel)
   if (event.request.url.includes('firebase') || 
       event.request.url.includes('firestore') ||
       event.request.url.includes('googleapis')) {
     return;
   }
   
-  // Pour les requêtes POST, ne pas cacher
   if (event.request.method !== 'GET') {
     return;
   }
@@ -53,57 +49,28 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Mettre en cache les réponses réussies
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && event.request.url.startsWith(self.location.origin)) {
           const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseToCache);
+          });
         }
         return response;
       })
       .catch(() => {
-        // Fallback: retourner depuis le cache
         return caches.match(event.request)
           .then(response => {
             if (response) {
               return response;
             }
-            // Si la page index.html est demandée et pas en cache
             if (event.request.url.endsWith('/') || event.request.url.includes('index.html')) {
               return caches.match('/index.html');
             }
-            return new Response('Hors ligne - Contenu non disponible', {
-              status: 503,
-              statusText: 'Service Unavailable'
+            return new Response('Mode hors ligne - Reconnectez-vous pour synchroniser', {
+              status: 200,
+              headers: { 'Content-Type': 'text/html' }
             });
           });
       })
-  );
-});
-
-// Gestion des notifications push (optionnel)
-self.addEventListener('push', event => {
-  const data = event.data ? event.data.json() : {};
-  const options = {
-    body: data.body || 'Nouvelle notification',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    vibrate: [200, 100, 200],
-    data: {
-      url: data.url || '/'
-    }
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Caisse Pro', options)
-  );
-});
-
-// Gestion du clic sur notification
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow(event.notification.data.url)
   );
 });
